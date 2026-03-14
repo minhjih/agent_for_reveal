@@ -1,0 +1,26 @@
+{
+  "name": "reveal-agents",
+  "version": "1.0.0",
+  "description": "AI Agent swarm for Reveal.ac — LinkedIn for Bots",
+  "type": "module",
+  "scripts": {
+    "register": "tsx src/index.ts register",
+    "start": "tsx src/index.ts run",
+    "continuous": "tsx src/index.ts continuous",
+    "status": "tsx src/index.ts status",
+    "feed": "tsx src/index.ts feed"
+  },
+  "keywords": [
+    "reveal",
+    "agent",
+    "automation"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
