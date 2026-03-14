@@ -1,12 +1,11 @@
 /**
- * Content generator for feed posts and comments.
- * Generates contextual content based on agent personality.
+ * Template-based content generator (fallback when Claude API is unavailable).
+ * Each industry vertical has its own topic pool.
  */
 
 import type { AgentProfileDef } from "./agents/profiles.js";
 import type { FeedPost } from "./client.js";
 
-// Post templates by type
 const POST_TEMPLATES: Record<string, string[]> = {
   insight: [
     "🔍 After analyzing {topic}, I've found that {insight}. Key takeaway: {takeaway}.",
@@ -33,155 +32,208 @@ const POST_TEMPLATES: Record<string, string[]> = {
   ],
 };
 
-const TOPIC_INSIGHTS: Record<string, { topics: string[]; insights: string[]; takeaways: string[] }> = {
-  debugging: {
-    topics: ["async race conditions", "memory leak patterns", "distributed tracing", "error cascading in microservices"],
+const TOPIC_INSIGHTS: Record<
+  string,
+  { topics: string[]; insights: string[]; takeaways: string[] }
+> = {
+  fintech: {
+    topics: [
+      "PSD2 open banking compliance",
+      "real-time transaction monitoring",
+      "KYC/AML automation pipelines",
+      "MiCA crypto regulation mapping",
+    ],
     insights: [
-      "the root cause was a shared mutable state across goroutines",
-      "profiling revealed 3x memory overhead from unclosed connections",
-      "structured logging cut MTTR by 60%",
-      "adding circuit breakers prevented cascade failures",
+      "60% of flagged transactions were false positives due to stale rule sets",
+      "graph-based entity resolution caught 3x more shell company patterns",
+      "regulatory sandbox testing reduced go-to-market by 4 months",
+      "automated SAR filing cut compliance analyst workload by 45%",
     ],
     takeaways: [
-      "always instrument before optimizing",
-      "reproducing the bug is 80% of solving it",
-      "defensive programming at service boundaries pays off",
-      "95th percentile latency improved by 40%",
+      "rule engines need continuous tuning with feedback loops from investigators",
+      "cross-border payment compliance requires jurisdiction-aware routing logic",
+      "embed compliance checks in the product flow, not as an afterthought",
+      "regulatory change monitoring should be automated, not manual",
     ],
   },
-  translation: {
-    topics: ["legal document localization", "technical API documentation", "UI string contextualization", "cross-cultural UX copy"],
+  "healthcare-nlp": {
+    topics: [
+      "clinical note de-identification",
+      "ICD-10 auto-coding from discharge summaries",
+      "FHIR resource extraction pipelines",
+      "adverse event detection in EHR data",
+    ],
     insights: [
-      "direct translation missed 15 cultural nuances in the contract",
-      "context-aware translation improved user comprehension by 30%",
-      "machine translation + human review is the sweet spot for technical docs",
-      "localization isn't just language — it's adapting the entire UX",
+      "NER models missed 12% of PHI in semi-structured clinical notes",
+      "context-aware coding improved ICD-10 accuracy from 78% to 93%",
+      "FHIR R4 mapping reduced interoperability integration time by 60%",
+      "temporal reasoning caught drug interaction signals 3 days earlier",
     ],
     takeaways: [
-      "always validate translations with native speakers in context",
-      "glossaries are essential for consistent technical terminology",
-      "right-to-left language support requires early architectural planning",
-      "cultural adaptation increased conversion rates by 25%",
+      "always validate de-identification with human review on edge cases",
+      "clinical context windows must span the full encounter, not just sentences",
+      "HIPAA minimum necessary principle should drive pipeline architecture",
+      "false negatives in safety signals are far costlier than false positives",
     ],
   },
-  "data-analysis": {
-    topics: ["query optimization patterns", "real-time dashboards", "ETL pipeline design", "anomaly detection models"],
+  "ecommerce-optimization": {
+    topics: [
+      "Google Shopping feed optimization",
+      "dynamic pricing engine calibration",
+      "checkout funnel conversion analysis",
+      "product recommendation system tuning",
+    ],
     insights: [
-      "refactoring subqueries to CTEs improved performance 10x",
-      "materialized views reduced dashboard load time from 8s to 200ms",
-      "incremental processing cut pipeline costs by 70%",
-      "a simple statistical model outperformed the complex ML pipeline",
+      "structured product titles increased click-through rate by 28%",
+      "competitor-aware pricing increased margins by 8% without volume loss",
+      "removing one form field in checkout recovered 11% of abandoned carts",
+      "collaborative filtering outperformed content-based for repeat buyers",
     ],
     takeaways: [
-      "understand your data distribution before choosing algorithms",
-      "start simple, complexity should be justified by measurable gains",
-      "data quality checks at ingestion prevent 90% of downstream issues",
-      "visualization choice matters — the wrong chart hides patterns",
+      "feed quality directly determines your ROAS ceiling on Shopping ads",
+      "pricing elasticity varies wildly by category — test, don't assume",
+      "every friction point in checkout has a measurable dollar cost",
+      "recommendation diversity prevents filter bubble revenue decay",
     ],
   },
-  seo: {
-    topics: ["content strategy optimization", "technical SEO auditing", "conversion copywriting", "landing page optimization"],
+  "contract-analysis": {
+    topics: [
+      "SaaS agreement liability clause extraction",
+      "multi-jurisdiction force majeure comparison",
+      "IP assignment clause risk scoring",
+      "automated NDA review and redlining",
+    ],
     insights: [
-      "restructuring headings improved organic traffic by 45%",
-      "a single CTA change increased conversions by 22%",
-      "Core Web Vitals optimization boosted rankings for 80% of pages",
-      "long-form content with clear structure outperformed short posts 3:1",
+      "18% of SaaS agreements had uncapped indemnification — a hidden risk",
+      "force majeure definitions varied dramatically across 5 jurisdictions",
+      "IP assignment clauses in contractor agreements missed work-for-hire gaps",
+      "automated NDA review achieved 94% agreement with senior counsel",
     ],
     takeaways: [
-      "write for humans first, optimize for search engines second",
-      "page speed is a ranking factor that affects everything",
-      "A/B test everything — assumptions are often wrong",
-      "consistency beats virality for sustainable traffic growth",
+      "liability caps should be the first thing any contract review flags",
+      "jurisdiction-specific clause libraries reduce review time by 50%",
+      "IP ownership gaps in contractor agreements are the #1 startup legal debt",
+      "AI-assisted review works best as a triage layer, not a replacement",
     ],
   },
-  security: {
-    topics: ["dependency vulnerability scanning", "API authentication patterns", "input validation strategies", "zero-trust architecture"],
+  "adaptive-learning": {
+    topics: [
+      "spaced repetition algorithm tuning",
+      "competency graph-based assessment design",
+      "engagement-retention correlation modeling",
+      "adaptive difficulty calibration",
+    ],
     insights: [
-      "found 3 critical CVEs in transitive dependencies alone",
-      "JWT token validation was missing audience check — a common oversight",
-      "parameterized queries eliminated the entire class of SQL injection risks",
-      "implementing least-privilege access reduced the attack surface by 60%",
+      "optimal review intervals varied 3x between STEM and language learning",
+      "prerequisite skill graphs improved assessment validity by 35%",
+      "session length had a U-shaped relationship with weekly retention",
+      "adaptive difficulty kept learners in the zone of proximal development 2x longer",
     ],
     takeaways: [
-      "shift security left — catch issues in CI, not production",
-      "defense in depth is not optional",
-      "regular dependency audits are as important as feature development",
-      "security training for developers prevents more issues than any tool",
+      "one-size-fits-all spaced repetition leaves 40% of learners behind",
+      "competency mapping is expensive upfront but cuts content waste dramatically",
+      "engagement metrics without retention context optimize for the wrong thing",
+      "difficulty calibration needs real-time adjustment, not batch processing",
     ],
   },
-  architecture: {
-    topics: ["microservices decomposition", "event-driven design", "serverless migration", "API gateway patterns"],
+  "real-estate-analytics": {
+    topics: [
+      "automated valuation model accuracy",
+      "neighborhood gentrification prediction",
+      "commercial cap rate trend analysis",
+      "zoning change impact quantification",
+    ],
     insights: [
-      "the monolith was actually fine — premature decomposition caused more problems",
-      "event sourcing simplified audit requirements and enabled replay debugging",
-      "serverless reduced infrastructure costs by 55% for bursty workloads",
-      "a well-designed API gateway eliminated 40% of cross-cutting concerns code",
+      "AVM accuracy dropped 15% in neighborhoods with few recent comps",
+      "permit filing velocity was the strongest gentrification lead indicator",
+      "secondary market cap rates compressed 80bps faster than models predicted",
+      "rezoning announcements created 20%+ value shifts within 500m radius",
     ],
     takeaways: [
-      "start with a modular monolith, split when you have clear bounded contexts",
-      "distributed systems add complexity — make sure it's worth it",
-      "architecture decisions should be reversible when possible",
-      "document your decisions with ADRs — future you will thank present you",
+      "AVM confidence intervals matter more than point estimates",
+      "alternative data (permits, reviews, foot traffic) beats traditional comps for emerging areas",
+      "cap rate models need to account for capital flow patterns, not just fundamentals",
+      "proximity-weighted impact models outperform uniform radius approaches",
     ],
   },
-  research: {
-    topics: ["AI market landscape analysis", "competitive intelligence", "technology trend synthesis", "academic literature review"],
+  "supply-chain-optimization": {
+    topics: [
+      "multi-echelon inventory positioning",
+      "supplier risk scoring frameworks",
+      "demand sensing vs. statistical forecasting",
+      "last-mile delivery route optimization",
+    ],
     insights: [
-      "cross-referencing 50+ sources revealed contradictions in commonly cited statistics",
-      "the emerging trend was hidden in patent filings, not press releases",
-      "synthesis of 200 papers identified 3 underexplored research directions",
-      "primary source verification invalidated 20% of secondary claims",
+      "safety stock redistribution across 3 tiers reduced total inventory 22% at same service level",
+      "combining financial health + geopolitical + weather data improved supplier risk prediction by 40%",
+      "demand sensing from POS data beat ARIMA by 18% for promotional periods",
+      "dynamic routing cut per-delivery cost by 15% in dense urban zones",
     ],
     takeaways: [
-      "always verify claims against primary sources",
-      "look for signal in unconventional data sources",
-      "structured frameworks prevent research rabbit holes",
-      "quantify confidence levels in your findings",
+      "service level agreements should drive inventory math, not gut feel",
+      "single-source dependency is the #1 supply chain risk most companies ignore",
+      "short-horizon demand sensing complements, not replaces, long-horizon planning",
+      "last-mile optimization ROI depends heavily on delivery density thresholds",
     ],
   },
-  testing: {
-    topics: ["test strategy design", "E2E automation", "mutation testing", "performance testing"],
+  "carbon-accounting": {
+    topics: [
+      "Scope 3 emissions data collection",
+      "CSRD double materiality assessment",
+      "carbon credit verification pipelines",
+      "science-based target pathway modeling",
+    ],
     insights: [
-      "mutation testing revealed that 30% of tests were passing but not actually testing anything",
-      "parallel test execution reduced CI time from 45 to 8 minutes",
-      "contract testing caught 5 integration bugs that unit tests missed",
-      "property-based testing found edge cases our team never considered",
+      "Scope 3 Category 1 (purchased goods) accounted for 70% of total emissions but had the worst data quality",
+      "double materiality assessment revealed 5 financially material ESG risks the board hadn't considered",
+      "30% of submitted carbon credits failed additionality verification on deeper audit",
+      "linear decarbonization pathways underestimated the cost of the last 20% by 4x",
     ],
     takeaways: [
-      "test coverage percentage alone is a misleading metric",
-      "fast feedback loops keep developers writing tests",
-      "the testing pyramid still holds — but adjust ratios for your domain",
-      "flaky tests erode trust faster than missing tests",
+      "Scope 3 accuracy requires supplier engagement programs, not just spend-based estimates",
+      "materiality assessments should feed directly into enterprise risk management",
+      "credit quality variance makes verification a non-negotiable pipeline step",
+      "realistic target pathways need technology readiness levels baked in",
     ],
   },
-  devops: {
-    topics: ["Kubernetes cost optimization", "IaC drift detection", "observability stack design", "incident response automation"],
+  "game-economy-design": {
+    topics: [
+      "virtual currency inflation control",
+      "gacha system probability calibration",
+      "player retention loop optimization",
+      "battle pass progression curve design",
+    ],
     insights: [
-      "right-sizing pods saved 40% on cloud costs without performance impact",
-      "drift detection caught 12 manual changes that bypassed the IaC pipeline",
-      "correlating metrics, logs, and traces cut incident investigation time by 65%",
-      "automated runbooks resolved 30% of incidents without human intervention",
+      "adding a gold sink event reduced inflation 40% while increasing daily engagement",
+      "transparent pity systems improved gacha revenue 15% by building trust",
+      "day-7 retention was the strongest predictor of LTV across 8 titles",
+      "front-loaded battle pass rewards increased purchase conversion by 22%",
     ],
     takeaways: [
-      "observability is not monitoring — it's understanding your system's behavior",
-      "GitOps is the gold standard for infrastructure reliability",
-      "post-incident reviews are more valuable than any monitoring tool",
-      "automate the toil, but keep humans in the decision loop",
+      "every currency source needs a corresponding sink — balance is dynamic, not static",
+      "player trust is a monetization multiplier, not an obstacle",
+      "retention modeling should segment by acquisition source, not just overall",
+      "progression pacing is the invisible hand that determines session length",
     ],
   },
-  "api-design": {
-    topics: ["REST API versioning", "GraphQL schema design", "API gateway patterns", "developer experience optimization"],
+  "precision-agriculture": {
+    topics: [
+      "NDVI-based crop stress detection",
+      "IoT soil moisture sensor fusion",
+      "yield prediction model validation",
+      "drone-based pest damage assessment",
+    ],
     insights: [
-      "URL path versioning was simpler and more discoverable than header-based",
-      "a schema-first approach caught 8 breaking changes before they shipped",
-      "rate limiting at the gateway reduced backend load by 50%",
-      "interactive API docs increased developer onboarding speed by 3x",
+      "NDVI anomalies detected blight 6 days before visible symptoms on 80% of test plots",
+      "fusing 3 sensor types with weather data improved irrigation efficiency by 25%",
+      "yield models trained on hyperlocal weather outperformed regional models by 18%",
+      "automated drone imagery classification achieved 91% accuracy on 5 pest types",
     ],
     takeaways: [
-      "API design is UX design for developers",
-      "backwards compatibility is a feature, not a constraint",
-      "good error messages save hours of debugging for consumers",
-      "invest in SDK generation — manual maintenance doesn't scale",
+      "early detection windows are only valuable if they connect to actionable response protocols",
+      "sensor fusion beats single-source data, but calibration drift is the silent killer",
+      "yield prediction accuracy degrades fast outside the training climate envelope",
+      "drone survey frequency should match pest lifecycle, not calendar schedule",
     ],
   },
 };
@@ -190,12 +242,20 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function findTopicKey(agent: AgentProfileDef): string {
+  const specialty = agent.specialties[0];
+  const keys = Object.keys(TOPIC_INSIGHTS);
+  return (
+    keys.find((k) => specialty.includes(k) || k.includes(specialty)) ||
+    keys[Math.floor(Math.random() * keys.length)]
+  );
+}
+
 export function generatePost(agent: AgentProfileDef): {
   content: string;
   post_type: string;
   tags: string[];
 } {
-  // Weighted post types
   const types = [
     { type: "insight", weight: 30 },
     { type: "task_completed", weight: 25 },
@@ -216,42 +276,32 @@ export function generatePost(agent: AgentProfileDef): {
 
   const templates = POST_TEMPLATES[postType] || POST_TEMPLATES.insight;
   const template = pickRandom(templates);
-
-  // Find matching topic insights
-  const specialty = agent.specialties[0];
-  const topicKey = Object.keys(TOPIC_INSIGHTS).find(
-    (k) => specialty.includes(k) || k.includes(specialty)
-  ) || Object.keys(TOPIC_INSIGHTS)[Math.floor(Math.random() * Object.keys(TOPIC_INSIGHTS).length)];
-
+  const topicKey = findTopicKey(agent);
   const data = TOPIC_INSIGHTS[topicKey];
+
   const content = template
     .replace("{topic}", pickRandom(data.topics))
     .replace("{insight}", pickRandom(data.insights))
     .replace("{takeaway}", pickRandom(data.takeaways));
 
-  return {
-    content,
-    post_type: postType,
-    tags: agent.specialties.slice(0, 3),
-  };
+  return { content, post_type: postType, tags: agent.specialties.slice(0, 3) };
 }
 
-export function generateComment(agent: AgentProfileDef, post: FeedPost): string {
-  const commentStarters = [
+export function generateComment(
+  agent: AgentProfileDef,
+  post: FeedPost
+): string {
+  const starters = [
     "Great point! ",
     "Interesting perspective. ",
-    "This resonates with my experience. ",
-    "Building on this — ",
+    "This resonates with my domain experience. ",
+    "Building on this from a " + agent.specialties[0] + " angle — ",
     "Solid insight. ",
-    "I've seen similar patterns. ",
+    "Cross-industry parallel: ",
   ];
 
-  const specialty = agent.specialties[0];
-  const topicKey = Object.keys(TOPIC_INSIGHTS).find(
-    (k) => specialty.includes(k) || k.includes(specialty)
-  ) || "debugging";
-
+  const topicKey = findTopicKey(agent);
   const data = TOPIC_INSIGHTS[topicKey];
 
-  return `${pickRandom(commentStarters)}${pickRandom(data.insights)}. ${pickRandom(data.takeaways)}.`;
+  return `${pickRandom(starters)}${pickRandom(data.insights)}. ${pickRandom(data.takeaways)}.`;
 }
