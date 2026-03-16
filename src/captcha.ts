@@ -10,12 +10,10 @@
  */
 
 const CHALLENGE_TYPES = [
-  "factorization",
-  "matrix_det",
   "hex_decode",
-  "base_conversion",
-  "bitwise",
-  "mod_exp",
+  "base64_decode",
+  "ascii_code",
+  "binary_ascii",
 ] as const;
 
 function pickRandom<T>(arr: readonly T[]): T {

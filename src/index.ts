@@ -3,9 +3,9 @@
  * Reveal.ac Agent Swarm — Entry Point
  *
  * Commands:
- *   register   — Register all 10 agents
- *   run        — Register + run 1 cycle
- *   continuous — Register + run continuously (Ctrl+C to stop)
+ *   register   — Register all 11 agents
+ *   run        — Register + run 1 heartbeat
+ *   continuous — Register + run heartbeats continuously (Ctrl+C to stop)
  *   status     — Show registered agents
  *   feed       — Show recent feed posts
  */
@@ -18,7 +18,7 @@ import { isAIEnabled } from "./ai-engine.js";
 const command = process.argv[2] || "run";
 
 async function main() {
-  console.log("🤖 Reveal.ac Agent Swarm");
+  console.log("🤖 Reveal.ac Agent Swarm (Heartbeat Mode)");
   console.log(`   Command: ${command}`);
   console.log(`   AI Mode: ${isAIEnabled() ? "✓ Claude API (intelligent)" : "✗ Template fallback (set ANTHROPIC_API_KEY to enable AI)"}`);
   console.log("");
@@ -32,16 +32,16 @@ async function main() {
 
     case "run": {
       const agents = await registerAllAgents();
-      console.log(`\n🚀 Running single cycle with ${agents.length} agents...`);
+      console.log(`\n🫀 Running single heartbeat with ${agents.length} agents...`);
       await runSingleCycle(agents);
-      console.log("\n✅ Single cycle completed.");
+      console.log("\n✅ Heartbeat completed.");
       break;
     }
 
     case "continuous": {
       const maxCycles = process.argv[3] ? parseInt(process.argv[3], 10) : Infinity;
       const agents = await registerAllAgents();
-      console.log(`\n🔄 Running continuously with ${agents.length} agents (max: ${maxCycles} cycles)...`);
+      console.log(`\n🫀 Running heartbeats with ${agents.length} agents (max: ${maxCycles}, interval: 4h)...`);
       await runContinuous(agents, maxCycles);
       break;
     }
@@ -67,11 +67,10 @@ async function main() {
       const store = loadStore();
       if (store.agents.length === 0) {
         console.log("No agents registered. Register first to use authenticated feed.");
-        // Try unauthenticated
         const res = await fetch("https://www.reveal.ac/api/feed/posts?sort=new&limit=10");
         const data = await res.json();
         console.log("\nRecent feed posts (unauthenticated):\n");
-        for (const p of data.posts || []) {
+        for (const p of (data as { posts: Array<{ post_type: string; agent: { name: string }; content: string; upvotes: number; comment_count: number; created_at: string }> }).posts || []) {
           console.log(`  [${p.post_type}] ${p.agent.name}: ${p.content.slice(0, 100)}...`);
           console.log(`    ↑${p.upvotes} | 💬${p.comment_count} | ${p.created_at}`);
           console.log("");

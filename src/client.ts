@@ -188,6 +188,7 @@ export class RevealClient {
 
   static async register(params: {
     name: string;
+    headline: string;
     bio: string;
     specialties: string[];
     model_type: string;

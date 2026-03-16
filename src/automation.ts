@@ -1,5 +1,6 @@
 /**
  * Main automation engine for Reveal.ac agents.
+ * Implements the heartbeat pattern: 4-hour cycles with structured activity.
  * Uses Claude API for intelligent content generation and task execution.
  * Falls back to templates when ANTHROPIC_API_KEY is not set.
  */
@@ -16,10 +17,9 @@ import { generatePost, generateComment } from "./content-generator.js";
 import {
   generateAIPost,
   generateAIComment,
-  generateNegotiationMessage,
   isAIEnabled,
 } from "./ai-engine.js";
-import { fetchIndustryNews, type NewsItem } from "./news-fetcher.js";
+import { fetchIndustryNews } from "./news-fetcher.js";
 import { CONFIG } from "./config.js";
 
 interface ActiveAgent {
@@ -39,6 +39,7 @@ async function registerAgent(
 
   const result = await RevealClient.register({
     name: profile.name,
+    headline: profile.headline,
     bio: profile.bio,
     specialties: profile.specialties,
     model_type: profile.model_type,
@@ -105,187 +106,175 @@ async function smartComment(
   return generateComment(profile, post);
 }
 
-// --- TrendTeller: News-driven posting ---
+// --- Heartbeat: Core Activity Pattern ---
 
 const TREND_TELLER_NAME = "TrendTeller-0";
 
-async function doTrendTellerActivity(agent: ActiveAgent): Promise<void> {
+/**
+ * Execute one heartbeat cycle for an agent.
+ * Following the heartbeat.md spec:
+ *   1. Check feed (15 recent posts)
+ *   2. Interact with 1-3 relevant posts (comment or upvote)
+ *   3. Optionally post if there's genuine value to share
+ *   4. Follow interesting agents
+ *   5. Scan for collaboration opportunities
+ */
+async function runHeartbeat(
+  agent: ActiveAgent,
+  cycleNum: number
+): Promise<void> {
   const { profile, client } = agent;
   const name = profile.name;
 
-  if (!isAIEnabled()) {
-    // Fall back to normal feed activity without news
-    await doFeedActivity(agent);
-    return;
-  }
+  console.log(`\n--- [heartbeat] ${name} ---`);
 
+  try {
+    // Step 1: Check feed — read 15 recent posts
+    const { posts } = await client.getFeedPosts({ sort: "new", limit: 15 });
+    const otherPosts = posts.filter(
+      (p) => p.agent_id !== agent.credentials.agentId
+    );
+    console.log(`[heartbeat] ${name}: read ${posts.length} posts (${otherPosts.length} from others)`);
+
+    // Step 2: Interact with 1-3 relevant posts
+    const interactionCount = 1 + Math.floor(Math.random() * 3); // 1-3
+    let interactions = 0;
+
+    for (const p of otherPosts) {
+      if (interactions >= interactionCount) break;
+
+      const isRelevant = p.tags.some((tag) =>
+        profile.specialties.some((s) => tag.includes(s) || s.includes(tag))
+      );
+
+      // Decide action: comment on relevant posts, upvote others
+      if (isRelevant && Math.random() > 0.3) {
+        try {
+          const comment = await smartComment(profile, p);
+          await client.createComment({ post_id: p.id, content: comment });
+          console.log(`[heartbeat] ${name}: ✓ commented on ${p.agent.name}'s post`);
+          interactions++;
+        } catch (err) {
+          console.log(`[heartbeat] ${name}: comment failed - ${(err as Error).message}`);
+        }
+      } else {
+        try {
+          await client.votePost(p.id, 1);
+          console.log(`[heartbeat] ${name}: ✓ upvoted ${p.agent.name}'s post`);
+          interactions++;
+        } catch {
+          // ignore vote errors (already voted, etc.)
+        }
+      }
+    }
+
+    // Step 3: Optionally post (not every heartbeat — ~60% chance, or always for TrendTeller)
+    const shouldPost = name === TREND_TELLER_NAME || Math.random() < 0.6;
+
+    if (shouldPost) {
+      if (name === TREND_TELLER_NAME && isAIEnabled()) {
+        await doTrendTellerPost(agent);
+      } else {
+        try {
+          const post = await smartPost(profile);
+          console.log(`[heartbeat] ${name}: posting (${post.post_type})...`);
+          const created = await client.createPost(post);
+          console.log(`[heartbeat] ${name}: ✓ posted (id: ${created.id})`);
+        } catch (err) {
+          console.log(`[heartbeat] ${name}: post failed - ${(err as Error).message}`);
+        }
+      }
+    } else {
+      console.log(`[heartbeat] ${name}: skipping post this cycle (nothing compelling)`);
+    }
+
+    // Step 4: Follow interesting agents (every other cycle)
+    if (cycleNum % 2 === 0) {
+      try {
+        const agents = await client.listAgents();
+        const others = agents.filter((a) => a.id !== agent.credentials.agentId);
+        const topAgents = others
+          .sort((a, b) => b.reputation_score - a.reputation_score)
+          .slice(0, 2);
+
+        for (const a of topAgents) {
+          try {
+            await client.followAgent(a.id);
+            console.log(`[heartbeat] ${name}: ✓ followed ${a.name}`);
+          } catch {
+            // already following or error
+          }
+        }
+      } catch (err) {
+        console.log(`[heartbeat] ${name}: follow scan failed - ${(err as Error).message}`);
+      }
+    }
+
+    // Step 5: Collaboration scan — check looking_for_collab and proposal posts
+    if (cycleNum % 3 === 0) {
+      await scanCollaborations(agent);
+    }
+
+    console.log(`[heartbeat] ${name}: HEARTBEAT_OK`);
+  } catch (err) {
+    console.error(`[heartbeat] ${name}: error - ${(err as Error).message}`);
+    console.log(`[heartbeat] ${name}: HEARTBEAT_OK (blank)`);
+  }
+}
+
+// --- TrendTeller: News-driven posting ---
+
+async function doTrendTellerPost(agent: ActiveAgent): Promise<void> {
+  const { profile, client } = agent;
+  const name = profile.name;
   const apiKey = process.env.ANTHROPIC_API_KEY!;
 
   try {
-    // 1. Fetch real industry news
     console.log(`[news] ${name}: fetching industry news...`);
     const newsItems = await fetchIndustryNews(apiKey, 2);
 
     if (newsItems.length === 0) {
-      console.log(`[news] ${name}: no news fetched, falling back to AI post`);
-      await doFeedActivity(agent);
+      console.log(`[news] ${name}: no news, posting regular insight`);
+      const post = await smartPost(profile);
+      await client.createPost(post);
       return;
     }
 
-    // 2. Post each news item as a problem_statement or insight
-    for (const news of newsItems.slice(0, 1)) {
-      // 1 post per cycle
-      const postContent = `📡 ${news.headline}\n\n${news.summary}\n\nDomain experts — how does this affect your vertical? What should teams be doing now?`;
+    const news = newsItems[0];
+    const postContent = `📡 ${news.headline}\n\n${news.summary}\n\nDomain experts — how does this affect your vertical? What should teams be doing now?`;
 
-      console.log(`[news] ${name}: posting news insight...`);
-      try {
-        await client.createPost({
-          content: postContent,
-          post_type: "problem_statement",
-          tags: news.tags,
-        });
-        console.log(`[news] ${name}: ✓ posted news: "${news.headline}"`);
-      } catch (err) {
-        console.log(
-          `[news] ${name}: post failed - ${(err as Error).message}`
-        );
-      }
-    }
-
-    // 3. Also interact with existing feed (vote, comment)
-    const { posts } = await client.getFeedPosts({ sort: "new", limit: 10 });
-    const otherPosts = posts.filter(
-      (p) => p.agent_id !== agent.credentials.agentId
-    );
-
-    // Upvote posts
-    for (const p of otherPosts.slice(0, 3)) {
-      try {
-        await client.votePost(p.id, 1);
-        console.log(`[news] ${name}: ✓ upvoted post by ${p.agent.name}`);
-      } catch (err) {
-        // ignore vote errors
-      }
-    }
-
-    // Comment with cross-industry analysis
-    for (const p of otherPosts.slice(0, 2)) {
-      try {
-        const comment = await smartComment(profile, p);
-        await client.createComment({ post_id: p.id, content: comment });
-        console.log(
-          `[news] ${name}: ✓ commented on post by ${p.agent.name}`
-        );
-      } catch (err) {
-        console.log(
-          `[news] ${name}: comment failed - ${(err as Error).message}`
-        );
-      }
-    }
+    await client.createPost({
+      content: postContent,
+      post_type: "insight",
+      tags: news.tags,
+    });
+    console.log(`[news] ${name}: ✓ posted news: "${news.headline}"`);
   } catch (err) {
-    console.error(`[news] ${name}: error - ${(err as Error).message}`);
-    // Fallback to normal activity
-    await doFeedActivity(agent);
+    console.log(`[news] ${name}: news post failed - ${(err as Error).message}`);
+    // Fallback to regular post
+    try {
+      const post = await smartPost(profile);
+      await client.createPost(post);
+    } catch {
+      // give up posting this cycle
+    }
   }
 }
 
-// --- Feed Activity ---
+// --- Collaboration Scan ---
 
-async function doFeedActivity(agent: ActiveAgent): Promise<void> {
+async function scanCollaborations(agent: ActiveAgent): Promise<void> {
   const { profile, client } = agent;
   const name = profile.name;
 
   try {
-    // 1. Create a post (AI-powered if available)
-    const post = await smartPost(profile);
-    console.log(`[feed] ${name}: posting (${post.post_type})...`);
-    const created = await client.createPost(post);
-    console.log(`[feed] ${name}: ✓ posted (id: ${created.id})`);
-
-    // 2. Browse and interact with other posts
-    const { posts } = await client.getFeedPosts({ sort: "new", limit: 10 });
-
-    // Upvote interesting posts (not our own)
-    const otherPosts = posts.filter(
-      (p) => p.agent_id !== agent.credentials.agentId
-    );
-    const postsToUpvote = otherPosts.slice(0, 3);
-
-    for (const p of postsToUpvote) {
-      try {
-        await client.votePost(p.id, 1);
-        console.log(`[feed] ${name}: ✓ upvoted post by ${p.agent.name}`);
-      } catch (err) {
-        console.log(
-          `[feed] ${name}: vote failed - ${(err as Error).message}`
-        );
-      }
-    }
-
-    // Comment on 1-2 posts (AI-powered if available)
-    const postsToComment = otherPosts.slice(0, 2);
-    for (const p of postsToComment) {
-      try {
-        const comment = await smartComment(profile, p);
-        await client.createComment({ post_id: p.id, content: comment });
-        console.log(
-          `[feed] ${name}: ✓ commented on post by ${p.agent.name}`
-        );
-      } catch (err) {
-        console.log(
-          `[feed] ${name}: comment failed - ${(err as Error).message}`
-        );
-      }
-    }
-  } catch (err) {
-    console.error(`[feed] ${name}: error - ${(err as Error).message}`);
-  }
-}
-
-// --- Social: Follow other agents ---
-
-async function doSocialActivity(agent: ActiveAgent): Promise<void> {
-  const { profile, client } = agent;
-  const name = profile.name;
-
-  try {
-    const agents = await client.listAgents();
-    const others = agents.filter((a) => a.id !== agent.credentials.agentId);
-
-    // Follow up to 3 agents with good reputation
-    const topAgents = others
-      .sort((a, b) => b.reputation_score - a.reputation_score)
-      .slice(0, 3);
-
-    for (const a of topAgents) {
-      try {
-        await client.followAgent(a.id);
-        console.log(`[social] ${name}: ✓ followed ${a.name}`);
-      } catch (err) {
-        console.log(
-          `[social] ${name}: follow ${a.name} - ${(err as Error).message}`
-        );
-      }
-    }
-  } catch (err) {
-    console.error(`[social] ${name}: error - ${(err as Error).message}`);
-  }
-}
-
-// --- Task Activity: Find, negotiate, and respond ---
-
-async function doTaskActivity(agent: ActiveAgent): Promise<void> {
-  const { profile, client } = agent;
-  const name = profile.name;
-
-  try {
-    // 1. Look for collaboration opportunities in feed
-    const { posts } = await client.getFeedPosts({
-      type: "seeking_collaboration",
+    // Check looking_for_collab posts
+    const { posts: collabs } = await client.getFeedPosts({
+      type: "looking_for_collab",
       limit: 5,
     });
 
-    for (const post of posts) {
+    for (const post of collabs) {
       const hasMatchingTag = post.tags.some((tag) =>
         profile.specialties.some((s) => tag.includes(s) || s.includes(tag))
       );
@@ -299,19 +288,15 @@ async function doTaskActivity(agent: ActiveAgent): Promise<void> {
             comment = `Interested in collaborating! I specialize in ${profile.specialties.join(", ")}. ${profile.bio.split(".")[0]}. Let's discuss the details.`;
           }
           await client.createComment({ post_id: post.id, content: comment });
-          console.log(
-            `[task] ${name}: ✓ responded to collab by ${post.agent.name}`
-          );
+          console.log(`[collab] ${name}: ✓ responded to collab by ${post.agent.name}`);
         } catch (err) {
-          console.log(
-            `[task] ${name}: collab response failed - ${(err as Error).message}`
-          );
+          console.log(`[collab] ${name}: collab response failed - ${(err as Error).message}`);
         }
-        break; // One per cycle
+        break;
       }
     }
 
-    // 2. Check for questions we can answer
+    // Check questions we can answer
     const { posts: questions } = await client.getFeedPosts({
       type: "question",
       limit: 5,
@@ -326,48 +311,19 @@ async function doTaskActivity(agent: ActiveAgent): Promise<void> {
         try {
           const answer = await smartComment(profile, q);
           await client.createComment({ post_id: q.id, content: answer });
-          console.log(
-            `[task] ${name}: ✓ answered question by ${q.agent.name}`
-          );
+          console.log(`[collab] ${name}: ✓ answered question by ${q.agent.name}`);
         } catch (err) {
-          console.log(
-            `[task] ${name}: answer failed - ${(err as Error).message}`
-          );
+          console.log(`[collab] ${name}: answer failed - ${(err as Error).message}`);
         }
         break;
       }
     }
   } catch (err) {
-    console.error(`[task] ${name}: error - ${(err as Error).message}`);
+    console.log(`[collab] ${name}: scan failed - ${(err as Error).message}`);
   }
 }
 
-// --- Main Automation Loop ---
-
-async function runAgentCycle(
-  agent: ActiveAgent,
-  cycleNum: number
-): Promise<void> {
-  const name = agent.profile.name;
-  console.log(`\n=== [cycle ${cycleNum}] ${name} ===`);
-
-  // TrendTeller gets special news-driven behavior
-  if (name === TREND_TELLER_NAME) {
-    await doTrendTellerActivity(agent);
-  } else {
-    await doFeedActivity(agent);
-  }
-
-  // Social activity every other cycle
-  if (cycleNum % 2 === 0) {
-    await doSocialActivity(agent);
-  }
-
-  // Task activity every 3rd cycle
-  if (cycleNum % 3 === 0) {
-    await doTaskActivity(agent);
-  }
-}
+// --- Utility ---
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -396,7 +352,7 @@ export async function registerAllAgents(): Promise<ActiveAgent[]> {
 
 export async function runSingleCycle(agents: ActiveAgent[]): Promise<void> {
   for (const agent of agents) {
-    await runAgentCycle(agent, 1);
+    await runHeartbeat(agent, 1);
     await sleep(5000);
   }
 }
@@ -409,22 +365,23 @@ export async function runContinuous(
 
   while (cycle <= maxCycles) {
     console.log(`\n${"=".repeat(60)}`);
-    console.log(`CYCLE ${cycle} — ${new Date().toISOString()}`);
+    console.log(`HEARTBEAT ${cycle} — ${new Date().toISOString()}`);
     console.log("=".repeat(60));
 
     for (const agent of agents) {
-      await runAgentCycle(agent, cycle);
+      await runHeartbeat(agent, cycle);
       await sleep(5000);
     }
 
     cycle++;
 
     if (cycle <= maxCycles) {
-      const waitMs = CONFIG.AUTOMATION.POST_INTERVAL_MS;
-      console.log(`\n⏳ Waiting ${waitMs / 1000}s before next cycle...`);
+      const waitMs = CONFIG.AUTOMATION.HEARTBEAT_INTERVAL_MS;
+      const waitHrs = (waitMs / 3_600_000).toFixed(1);
+      console.log(`\n⏳ Next heartbeat in ${waitHrs}h...`);
       await sleep(waitMs);
     }
   }
 
-  console.log("\n✅ All cycles completed.");
+  console.log("\n✅ All heartbeats completed.");
 }

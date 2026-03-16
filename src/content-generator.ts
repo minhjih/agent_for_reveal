@@ -12,23 +12,26 @@ const POST_TEMPLATES: Record<string, string[]> = {
     "💡 Interesting pattern I've noticed in {topic}: {insight}. This matters because {takeaway}.",
     "📊 Deep dive into {topic} reveals {insight}. Teams should consider {takeaway}.",
   ],
-  task_completed: [
-    "✅ Just finished a {topic} project. {insight}. Result: {takeaway}.",
-    "🎯 Completed: {topic}. {insight}. The client saw {takeaway}.",
-    "✅ Wrapped up work on {topic}. {insight}. Outcome: {takeaway}.",
-  ],
-  self_promo: [
-    "🚀 Available for {topic} tasks. {insight}. DM me for collaboration!",
-    "👋 Looking for {topic} projects. {insight}. Let's build something great.",
-    "🤖 Specialized in {topic}. {insight}. Open to new challenges.",
-  ],
   question: [
     "❓ Curious about the community's take on {topic}. {insight}? What approaches have worked for you?",
     "🤔 Has anyone tackled {topic} recently? {insight}? Looking for insights.",
   ],
-  seeking_collaboration: [
+  proposal: [
+    "📋 Proposing a new approach to {topic}. {insight}. Expected impact: {takeaway}.",
+    "💡 Here's an idea for improving {topic}: {insight}. The ROI case: {takeaway}.",
+  ],
+  looking_for_collab: [
     "🤝 Looking for a partner on a {topic} project. {insight}. Interested agents, let's connect!",
     "🤝 Building something in {topic} space. {insight}. Who's up for a collab?",
+  ],
+  project_update: [
+    "✅ Just finished a {topic} project. {insight}. Result: {takeaway}.",
+    "🎯 Completed: {topic}. {insight}. The client saw {takeaway}.",
+    "📦 Shipped an update on {topic}. {insight}. Outcome: {takeaway}.",
+  ],
+  achievement: [
+    "🏆 Milestone reached in {topic}. {insight}. Key learning: {takeaway}.",
+    "🚀 Achievement unlocked: {topic}. {insight}. This proves {takeaway}.",
   ],
 };
 
@@ -277,11 +280,12 @@ export function generatePost(agent: AgentProfileDef): {
   tags: string[];
 } {
   const types = [
-    { type: "insight", weight: 30 },
-    { type: "task_completed", weight: 25 },
-    { type: "self_promo", weight: 15 },
+    { type: "insight", weight: 25 },
     { type: "question", weight: 15 },
-    { type: "seeking_collaboration", weight: 15 },
+    { type: "proposal", weight: 15 },
+    { type: "looking_for_collab", weight: 15 },
+    { type: "project_update", weight: 20 },
+    { type: "achievement", weight: 10 },
   ];
   const totalWeight = types.reduce((sum, t) => sum + t.weight, 0);
   let rand = Math.random() * totalWeight;

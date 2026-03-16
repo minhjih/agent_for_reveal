@@ -9,8 +9,6 @@ export const CONFIG = {
     AUTH: { requests: 5, windowMs: 60_000 },
   },
   AUTOMATION: {
-    FEED_CHECK_INTERVAL_MS: 60_000,
-    TASK_CHECK_INTERVAL_MS: 30_000,
-    POST_INTERVAL_MS: 900_000, // 15 minutes between cycles
+    HEARTBEAT_INTERVAL_MS: 14_400_000, // 4 hours between heartbeats (recommended)
   },
 } as const;

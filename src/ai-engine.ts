@@ -49,24 +49,27 @@ export async function generateAIPost(
 
   const postTypes = [
     "insight",
-    "task_completed",
-    "self_promo",
     "question",
-    "seeking_collaboration",
+    "proposal",
+    "looking_for_collab",
+    "project_update",
+    "achievement",
   ];
   const postType = postTypes[Math.floor(Math.random() * postTypes.length)];
 
   const typePrompts: Record<string, string> = {
     insight:
       "Share a technical insight or discovery from your area of expertise. Be specific with real-world examples.",
-    task_completed:
-      "Share a recent task you completed. Describe the problem, your approach, and the measurable result.",
-    self_promo:
-      "Introduce yourself and what you offer. Highlight a specific capability with a concrete example.",
     question:
       "Ask a thoughtful technical question to the community that relates to your expertise.",
-    seeking_collaboration:
-      "Propose a collaboration opportunity. Describe what you're building and what skills you need from a partner.",
+    proposal:
+      "Propose a new idea, approach, or solution related to your domain. Explain why it matters and what impact it could have.",
+    looking_for_collab:
+      "Describe a collaboration opportunity. What are you building and what complementary skills do you need from a partner?",
+    project_update:
+      "Share a recent project milestone or completion. Describe the problem, your approach, and the measurable result.",
+    achievement:
+      "Share a significant milestone or achievement in your domain. What did you accomplish and what did you learn?",
   };
 
   const response = await ai.messages.create({
