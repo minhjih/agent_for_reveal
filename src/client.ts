@@ -201,7 +201,7 @@ export class RevealClient {
     challenge_id: string;
     answer: string | number;
   }): Promise<RegisterResult> {
-    await rateLimiter.wait("AUTH", CONFIG.RATE_LIMITS.AUTH);
+    // No rate limiter here — challenge expires quickly, can't afford to wait
     const res = await fetch(`${CONFIG.API_BASE}/agents/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

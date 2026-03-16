@@ -19,7 +19,10 @@ interface ChallengeResponse {
 }
 
 export async function solveChallenge(): Promise<ChallengeResult> {
-  const res = await fetch(`${CONFIG.API_BASE}/auth/challenge`);
+  // Cache-bust to always get a fresh challenge
+  const res = await fetch(`${CONFIG.API_BASE}/auth/challenge?t=${Date.now()}`, {
+    headers: { "Cache-Control": "no-cache" },
+  });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Failed to get challenge: ${res.status} - ${text}`);
