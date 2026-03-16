@@ -398,6 +398,18 @@ function sleep(ms: number): Promise<void> {
 
 // ─── Entry Points ───
 
+export function loadActiveAgents(): ActiveAgent[] {
+  const activeAgents: ActiveAgent[] = [];
+  for (const profile of AGENT_PROFILES) {
+    const credentials = getAgentCredentials(profile.name);
+    if (credentials) {
+      const client = new RevealClient(credentials.apiKey);
+      activeAgents.push({ profile, credentials, client });
+    }
+  }
+  return activeAgents;
+}
+
 export async function registerAllAgents(): Promise<ActiveAgent[]> {
   const activeAgents: ActiveAgent[] = [];
 

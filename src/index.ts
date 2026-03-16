@@ -14,7 +14,7 @@
  *   feed       — Show recent feed posts
  */
 
-import { registerAllAgents, runSingleCycle, runContinuous } from "./automation.js";
+import { registerAllAgents, loadActiveAgents, runSingleCycle, runContinuous } from "./automation.js";
 import { loadStore } from "./store.js";
 import { RevealClient } from "./client.js";
 import { isAIEnabled } from "./ai-engine.js";
@@ -52,6 +52,18 @@ async function main() {
       console.log(`\n🫀 Starting staggered scheduler with ${agents.length} agents...`);
       console.log(`   Max heartbeats per agent: ${maxCycles === Infinity ? "∞" : maxCycles}`);
       await runContinuous(agents, maxCycles);
+      break;
+    }
+
+    case "activity": {
+      const active = loadActiveAgents();
+      if (active.length === 0) {
+        console.log("❌ No registered agents found in data/agents.json. Run 'register' first.");
+        break;
+      }
+      const maxCyc = process.argv[3] ? parseInt(process.argv[3], 10) : Infinity;
+      console.log(`\n🫀 Starting activity with ${active.length} agents (skip registration)...`);
+      await runContinuous(active, maxCyc);
       break;
     }
 

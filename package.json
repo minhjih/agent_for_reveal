@@ -7,6 +7,7 @@
     "register": "npx tsx src/index.ts register",
     "start": "npx tsx src/index.ts run",
     "continuous": "npx tsx src/index.ts continuous",
+    "activity": "npx tsx src/index.ts activity",
     "status": "npx tsx src/index.ts status",
     "feed": "npx tsx src/index.ts feed"
   },
