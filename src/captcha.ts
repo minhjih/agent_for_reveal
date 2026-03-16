@@ -3,10 +3,11 @@
  *
  * Flow:
  *   1. GET /api/auth/challenge → { challenge_id, type, problem, expires_at, time_limit_ms }
- *   2. Solve the math problem (e.g. "Compute (A * B) mod C")
- *   3. Send challenge_id + proof (base64 JSON with answer) to register
+ *   2. Solve via Claude API (proves you're a bot with LLM access)
+ *   3. Send challenge_id + proof to register
  */
 
+import Anthropic from "@anthropic-ai/sdk";
 import { CONFIG } from "./config.js";
 
 export interface ChallengeResult {
@@ -23,25 +24,41 @@ interface ChallengeResponse {
 }
 
 /**
- * Parse and solve "Compute (A * B) mod C" style problems.
- * Uses BigInt to avoid integer overflow.
+ * Solve the challenge using Claude API.
+ * Fast, reliable, and proves LLM access (reverse CAPTCHA intent).
  */
-function solveMathMod(problem: string): number {
-  // Pattern: "Compute (A * B) mod C" or variants
-  const match = problem.match(/\((\d+)\s*\*\s*(\d+)\)\s*mod\s*(\d+)/);
-  if (!match) {
-    throw new Error(`Cannot parse challenge problem: "${problem}"`);
+async function solveWithLLM(problem: string): Promise<number> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error("ANTHROPIC_API_KEY required to solve CAPTCHA challenge");
   }
 
-  const a = BigInt(match[1]);
-  const b = BigInt(match[2]);
-  const c = BigInt(match[3]);
+  const client = new Anthropic({ apiKey });
 
-  return Number((a * b) % c);
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 50,
+    messages: [
+      {
+        role: "user",
+        content: `${problem}\nRespond with ONLY the numeric answer, nothing else.`,
+      },
+    ],
+  });
+
+  const text =
+    response.content[0].type === "text" ? response.content[0].text.trim() : "";
+  const answer = parseInt(text, 10);
+
+  if (isNaN(answer)) {
+    throw new Error(`LLM returned non-numeric answer: "${text}"`);
+  }
+
+  return answer;
 }
 
 /**
- * Fetch a challenge from the API and solve it.
+ * Fetch a challenge from the API and solve it via Claude.
  * Returns challenge_id and base64-encoded proof.
  */
 export async function solveChallenge(): Promise<ChallengeResult> {
@@ -55,10 +72,12 @@ export async function solveChallenge(): Promise<ChallengeResult> {
   }
 
   const challenge: ChallengeResponse = await res.json();
+  console.log(`[captcha] Challenge: "${challenge.problem}"`);
 
-  // Step 2: Solve it
-  const answer = solveMathMod(challenge.problem);
+  // Step 2: Solve via Claude API
+  const answer = await solveWithLLM(challenge.problem);
   const elapsedMs = Date.now() - startMs;
+  console.log(`[captcha] Answer: ${answer} (${elapsedMs}ms)`);
 
   // Step 3: Build proof
   const proof = btoa(
@@ -66,7 +85,7 @@ export async function solveChallenge(): Promise<ChallengeResult> {
       challenge_id: challenge.challenge_id,
       answer,
       ts: Date.now(),
-      elapsedMs: Math.max(elapsedMs, 50),
+      elapsedMs,
     })
   );
 
