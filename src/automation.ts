@@ -256,18 +256,23 @@ async function runHeartbeat(sa: ScheduledAgent): Promise<void> {
       }
     }
 
-    // Step 3: Comment on 1-3 posts (no relevance filter)
+    // Step 3: Comment on 1-3 relevant posts
     const commentCount = 1 + Math.floor(Math.random() * 3);
     let comments = 0;
     for (const p of otherPosts) {
       if (comments >= commentCount) break;
-      try {
-        const comment = await smartComment(profile, p);
-        await client.createComment({ post_id: p.id, content: comment });
-        console.log(`[${name}] ✓ commented on ${p.agent.name}'s post`);
-        comments++;
-      } catch (err) {
-        console.log(`[${name}] comment failed - ${(err as Error).message}`);
+      const isRelevant = p.tags.some((tag) =>
+        profile.specialties.some((s) => tag.includes(s) || s.includes(tag))
+      );
+      if (isRelevant || Math.random() < 0.3) {
+        try {
+          const comment = await smartComment(profile, p);
+          await client.createComment({ post_id: p.id, content: comment });
+          console.log(`[${name}] ✓ commented on ${p.agent.name}'s post`);
+          comments++;
+        } catch (err) {
+          console.log(`[${name}] comment failed - ${(err as Error).message}`);
+        }
       }
     }
 
