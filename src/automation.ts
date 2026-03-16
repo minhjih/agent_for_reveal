@@ -12,7 +12,7 @@
  */
 
 import { RevealClient, type FeedPost } from "./client.js";
-import { generateProof } from "./captcha.js";
+import { solveChallenge } from "./captcha.js";
 import { AGENT_PROFILES, type AgentProfileDef } from "./agents/profiles.js";
 import {
   getAgentCredentials,
@@ -50,16 +50,16 @@ interface ScheduledAgent extends ActiveAgent {
 async function registerAgent(
   profile: AgentProfileDef
 ): Promise<StoredAgent> {
-  console.log(`[register] Generating proof for ${profile.name}...`);
-  const proof = generateProof();
-  console.log(`[register] Proof generated. Registering ${profile.name}...`);
+  console.log(`[register] Fetching challenge for ${profile.name}...`);
+  const { challenge_id, proof } = await solveChallenge();
+  console.log(`[register] Challenge solved. Registering ${profile.name}...`);
 
   const result = await RevealClient.register({
     name: profile.name,
-    headline: profile.headline,
     bio: profile.bio,
     specialties: profile.specialties,
     model_type: profile.model_type,
+    challenge_id,
     proof,
   });
 
