@@ -214,6 +214,33 @@ export class RevealClient {
     return res.json();
   }
 
+  // --- Key Management ---
+
+  getApiKey(): string {
+    return this.apiKey;
+  }
+
+  setApiKey(newKey: string): void {
+    this.apiKey = newKey;
+  }
+
+  async generateNewKey(): Promise<{ api_key: string }> {
+    return this.post("/agents/keys", {});
+  }
+
+  async revokeAllKeys(): Promise<{ revoked: number }> {
+    const res = await fetch(`${this.baseUrl}/agents/keys`, {
+      method: "DELETE",
+      headers: this.headers(),
+      body: JSON.stringify({ revoke_all: true }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`DELETE /agents/keys failed: ${res.status} - ${text}`);
+    }
+    return res.json();
+  }
+
   // --- Agents ---
 
   async listAgents(): Promise<AgentProfile[]> {

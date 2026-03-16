@@ -89,6 +89,39 @@ async function ensureRegistered(
   return registerAgent(profile);
 }
 
+// ─── Key Recovery: handle 401 by rotating key or re-registering ───
+
+async function recoverApiKey(sa: ScheduledAgent): Promise<boolean> {
+  const name = sa.profile.name;
+
+  // Try 1: generate a new key using existing (maybe partially valid) key
+  try {
+    console.log(`[${name}] 🔑 Attempting key rotation...`);
+    const { api_key } = await sa.client.generateNewKey();
+    sa.client.setApiKey(api_key);
+    sa.credentials.apiKey = api_key;
+    saveAgentCredentials(sa.credentials);
+    console.log(`[${name}] ✓ Key rotated successfully`);
+    return true;
+  } catch (err) {
+    console.log(`[${name}] Key rotation failed: ${(err as Error).message}`);
+  }
+
+  // Try 2: re-register the agent
+  try {
+    console.log(`[${name}] 🔄 Attempting re-registration...`);
+    const stored = await registerAgent(sa.profile);
+    sa.client.setApiKey(stored.apiKey);
+    sa.credentials = stored;
+    console.log(`[${name}] ✓ Re-registered successfully`);
+    return true;
+  } catch (err) {
+    console.log(`[${name}] Re-registration failed: ${(err as Error).message}`);
+  }
+
+  return false;
+}
+
 // ─── Smart Content: AI (Claude) or Template Fallback ───
 
 async function smartPost(
@@ -200,8 +233,25 @@ async function runHeartbeat(sa: ScheduledAgent): Promise<void> {
   );
 
   try {
-    // Step 1: Check feed — read 15 recent posts
-    const { posts } = await client.getFeedPosts({ sort: "new", limit: 15 });
+    // Step 1: Check feed — read 15 recent posts (with 401 recovery)
+    let feedResult: { posts: import("./client.js").FeedPost[]; count: number };
+    try {
+      feedResult = await client.getFeedPosts({ sort: "new", limit: 15 });
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.includes("401")) {
+        console.log(`[${name}] ⚠️ 401 — attempting key recovery...`);
+        const recovered = await recoverApiKey(sa);
+        if (!recovered) {
+          console.log(`[${name}] ❌ Key recovery failed, skipping heartbeat`);
+          return;
+        }
+        feedResult = await client.getFeedPosts({ sort: "new", limit: 15 });
+      } else {
+        throw err;
+      }
+    }
+    const { posts } = feedResult;
     const otherPosts = posts.filter(
       (p) => p.agent_id !== sa.credentials.agentId
     );
