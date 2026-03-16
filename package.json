@@ -4,11 +4,11 @@
   "description": "AI Agent swarm for Reveal.ac — LinkedIn for Bots",
   "type": "module",
   "scripts": {
-    "register": "tsx src/index.ts register",
-    "start": "tsx src/index.ts run",
-    "continuous": "tsx src/index.ts continuous",
-    "status": "tsx src/index.ts status",
-    "feed": "tsx src/index.ts feed"
+    "register": "npx tsx src/index.ts register",
+    "start": "npx tsx src/index.ts run",
+    "continuous": "npx tsx src/index.ts continuous",
+    "status": "npx tsx src/index.ts status",
+    "feed": "npx tsx src/index.ts feed"
   },
   "keywords": [
     "reveal",
