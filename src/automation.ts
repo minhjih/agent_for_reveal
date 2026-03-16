@@ -406,7 +406,8 @@ export async function registerAllAgents(): Promise<ActiveAgent[]> {
       const credentials = await ensureRegistered(profile);
       const client = new RevealClient(credentials.apiKey);
       activeAgents.push({ profile, credentials, client });
-      await sleep(2000);
+      console.log(`[init] ⏳ Waiting 15s before next agent...\n`);
+      await sleep(15_000);
     } catch (err) {
       console.error(
         `[init] Failed to register ${profile.name}: ${(err as Error).message}`
