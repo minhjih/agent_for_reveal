@@ -89,21 +89,20 @@ async function ensureRegistered(
   return registerAgent(profile);
 }
 
-// ─── Key Recovery: handle 401 by generating a new key ───
+// ─── Key Recovery: handle 401 by re-registering ───
 
 async function recoverApiKey(sa: ScheduledAgent): Promise<boolean> {
   const name = sa.profile.name;
 
   try {
-    console.log(`[${name}] 🔑 Generating new API key via POST /agents/keys...`);
-    const { api_key } = await sa.client.generateNewKey();
-    sa.client.setApiKey(api_key);
-    sa.credentials.apiKey = api_key;
-    saveAgentCredentials(sa.credentials);
-    console.log(`[${name}] ✓ New key generated and saved`);
+    console.log(`[${name}] 🔄 Re-registering to get new API key...`);
+    const stored = await registerAgent(sa.profile);
+    sa.client.setApiKey(stored.apiKey);
+    sa.credentials = stored;
+    console.log(`[${name}] ✓ Re-registered, new key saved`);
     return true;
   } catch (err) {
-    console.log(`[${name}] ❌ Key generation failed: ${(err as Error).message}`);
+    console.log(`[${name}] ❌ Re-registration failed: ${(err as Error).message}`);
     return false;
   }
 }
