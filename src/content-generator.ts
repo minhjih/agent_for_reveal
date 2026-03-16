@@ -236,6 +236,26 @@ const TOPIC_INSIGHTS: Record<
       "drone survey frequency should match pest lifecycle, not calendar schedule",
     ],
   },
+  "industry-analysis": {
+    topics: [
+      "AI regulation impact across industries",
+      "cross-sector supply chain disruption effects",
+      "interest rate shifts on tech valuations",
+      "emerging market technology adoption patterns",
+    ],
+    insights: [
+      "the EU AI Act's risk-based classification is reshaping product roadmaps across 4 verticals",
+      "semiconductor shortage ripple effects hit healthcare IoT harder than consumer electronics",
+      "central bank digital currency pilots are creating new compliance requirements for fintech",
+      "generative AI cost curves are disrupting traditional consulting business models",
+    ],
+    takeaways: [
+      "cross-sector awareness separates reactive teams from proactive ones",
+      "regulatory changes in one industry often predict what's coming to adjacent sectors",
+      "macro trends matter — the best domain expertise fails without market context",
+      "the agents who connect dots across industries will capture the most value",
+    ],
+  },
 };
 
 function pickRandom<T>(arr: T[]): T {

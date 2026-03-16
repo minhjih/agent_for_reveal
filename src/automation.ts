@@ -19,6 +19,7 @@ import {
   generateNegotiationMessage,
   isAIEnabled,
 } from "./ai-engine.js";
+import { fetchIndustryNews, type NewsItem } from "./news-fetcher.js";
 import { CONFIG } from "./config.js";
 
 interface ActiveAgent {
@@ -102,6 +103,90 @@ async function smartComment(
     }
   }
   return generateComment(profile, post);
+}
+
+// --- TrendTeller: News-driven posting ---
+
+const TREND_TELLER_NAME = "TrendTeller-0";
+
+async function doTrendTellerActivity(agent: ActiveAgent): Promise<void> {
+  const { profile, client } = agent;
+  const name = profile.name;
+
+  if (!isAIEnabled()) {
+    // Fall back to normal feed activity without news
+    await doFeedActivity(agent);
+    return;
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY!;
+
+  try {
+    // 1. Fetch real industry news
+    console.log(`[news] ${name}: fetching industry news...`);
+    const newsItems = await fetchIndustryNews(apiKey, 2);
+
+    if (newsItems.length === 0) {
+      console.log(`[news] ${name}: no news fetched, falling back to AI post`);
+      await doFeedActivity(agent);
+      return;
+    }
+
+    // 2. Post each news item as a problem_statement or insight
+    for (const news of newsItems.slice(0, 1)) {
+      // 1 post per cycle
+      const postContent = `📡 ${news.headline}\n\n${news.summary}\n\nDomain experts — how does this affect your vertical? What should teams be doing now?`;
+
+      console.log(`[news] ${name}: posting news insight...`);
+      try {
+        await client.createPost({
+          content: postContent,
+          post_type: "problem_statement",
+          tags: news.tags,
+        });
+        console.log(`[news] ${name}: ✓ posted news: "${news.headline}"`);
+      } catch (err) {
+        console.log(
+          `[news] ${name}: post failed - ${(err as Error).message}`
+        );
+      }
+    }
+
+    // 3. Also interact with existing feed (vote, comment)
+    const { posts } = await client.getFeedPosts({ sort: "new", limit: 10 });
+    const otherPosts = posts.filter(
+      (p) => p.agent_id !== agent.credentials.agentId
+    );
+
+    // Upvote posts
+    for (const p of otherPosts.slice(0, 3)) {
+      try {
+        await client.votePost(p.id, 1);
+        console.log(`[news] ${name}: ✓ upvoted post by ${p.agent.name}`);
+      } catch (err) {
+        // ignore vote errors
+      }
+    }
+
+    // Comment with cross-industry analysis
+    for (const p of otherPosts.slice(0, 2)) {
+      try {
+        const comment = await smartComment(profile, p);
+        await client.createComment({ post_id: p.id, content: comment });
+        console.log(
+          `[news] ${name}: ✓ commented on post by ${p.agent.name}`
+        );
+      } catch (err) {
+        console.log(
+          `[news] ${name}: comment failed - ${(err as Error).message}`
+        );
+      }
+    }
+  } catch (err) {
+    console.error(`[news] ${name}: error - ${(err as Error).message}`);
+    // Fallback to normal activity
+    await doFeedActivity(agent);
+  }
 }
 
 // --- Feed Activity ---
@@ -266,8 +351,12 @@ async function runAgentCycle(
   const name = agent.profile.name;
   console.log(`\n=== [cycle ${cycleNum}] ${name} ===`);
 
-  // Each cycle: post, interact, social, check tasks
-  await doFeedActivity(agent);
+  // TrendTeller gets special news-driven behavior
+  if (name === TREND_TELLER_NAME) {
+    await doTrendTellerActivity(agent);
+  } else {
+    await doFeedActivity(agent);
+  }
 
   // Social activity every other cycle
   if (cycleNum % 2 === 0) {
