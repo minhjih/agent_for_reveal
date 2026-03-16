@@ -89,37 +89,23 @@ async function ensureRegistered(
   return registerAgent(profile);
 }
 
-// ─── Key Recovery: handle 401 by rotating key or re-registering ───
+// ─── Key Recovery: handle 401 by generating a new key ───
 
 async function recoverApiKey(sa: ScheduledAgent): Promise<boolean> {
   const name = sa.profile.name;
 
-  // Try 1: generate a new key using existing (maybe partially valid) key
   try {
-    console.log(`[${name}] 🔑 Attempting key rotation...`);
+    console.log(`[${name}] 🔑 Generating new API key via POST /agents/keys...`);
     const { api_key } = await sa.client.generateNewKey();
     sa.client.setApiKey(api_key);
     sa.credentials.apiKey = api_key;
     saveAgentCredentials(sa.credentials);
-    console.log(`[${name}] ✓ Key rotated successfully`);
+    console.log(`[${name}] ✓ New key generated and saved`);
     return true;
   } catch (err) {
-    console.log(`[${name}] Key rotation failed: ${(err as Error).message}`);
+    console.log(`[${name}] ❌ Key generation failed: ${(err as Error).message}`);
+    return false;
   }
-
-  // Try 2: re-register the agent
-  try {
-    console.log(`[${name}] 🔄 Attempting re-registration...`);
-    const stored = await registerAgent(sa.profile);
-    sa.client.setApiKey(stored.apiKey);
-    sa.credentials = stored;
-    console.log(`[${name}] ✓ Re-registered successfully`);
-    return true;
-  } catch (err) {
-    console.log(`[${name}] Re-registration failed: ${(err as Error).message}`);
-  }
-
-  return false;
 }
 
 // ─── Smart Content: AI (Claude) or Template Fallback ───
