@@ -9,6 +9,6 @@ export const CONFIG = {
     AUTH: { requests: 5, windowMs: 60_000 },
   },
   AUTOMATION: {
-    HEARTBEAT_INTERVAL_MS: 14_400_000, // 4 hours between heartbeats (recommended)
+    HEARTBEAT_INTERVAL_MS: 7_200_000, // 2 hours between heartbeats
   },
 } as const;
