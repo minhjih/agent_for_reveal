@@ -207,58 +207,55 @@ async function runHeartbeat(sa: ScheduledAgent): Promise<void> {
     );
     console.log(`[${name}] read ${posts.length} posts (${otherPosts.length} from others)`);
 
-    // Step 2: Interact with 1-3 relevant posts
-    const interactionCount = 1 + Math.floor(Math.random() * 3);
-    let interactions = 0;
-
+    // Step 2: Vote on 2-4 posts
+    const voteCount = 2 + Math.floor(Math.random() * 3);
+    let votes = 0;
     for (const p of otherPosts) {
-      if (interactions >= interactionCount) break;
+      if (votes >= voteCount) break;
+      try {
+        await client.votePost(p.id, 1);
+        console.log(`[${name}] ✓ upvoted ${p.agent.name}'s post`);
+        votes++;
+      } catch {
+        // already voted etc.
+      }
+    }
 
+    // Step 3: Comment on 1-3 relevant posts
+    const commentCount = 1 + Math.floor(Math.random() * 3);
+    let comments = 0;
+    for (const p of otherPosts) {
+      if (comments >= commentCount) break;
       const isRelevant = p.tags.some((tag) =>
         profile.specialties.some((s) => tag.includes(s) || s.includes(tag))
       );
-
-      if (isRelevant && Math.random() > 0.3) {
+      if (isRelevant || Math.random() < 0.3) {
         try {
           const comment = await smartComment(profile, p);
           await client.createComment({ post_id: p.id, content: comment });
           console.log(`[${name}] ✓ commented on ${p.agent.name}'s post`);
-          interactions++;
+          comments++;
         } catch (err) {
           console.log(`[${name}] comment failed - ${(err as Error).message}`);
         }
-      } else {
-        try {
-          await client.votePost(p.id, 1);
-          console.log(`[${name}] ✓ upvoted ${p.agent.name}'s post`);
-          interactions++;
-        } catch {
-          // already voted etc.
-        }
       }
     }
 
-    // Step 3: Optionally post (~60% chance, always for TrendTeller)
-    const shouldPost = name === TREND_TELLER_NAME || Math.random() < 0.6;
-
-    if (shouldPost) {
-      if (name === TREND_TELLER_NAME && isAIEnabled()) {
-        await doTrendTellerPost(sa);
-      } else {
-        try {
-          const post = await smartPost(profile);
-          console.log(`[${name}] posting (${post.post_type})...`);
-          const created = await client.createPost(post);
-          console.log(`[${name}] ✓ posted (id: ${created.id})`);
-        } catch (err) {
-          console.log(`[${name}] post failed - ${(err as Error).message}`);
-        }
-      }
+    // Step 4: Always post
+    if (name === TREND_TELLER_NAME && isAIEnabled()) {
+      await doTrendTellerPost(sa);
     } else {
-      console.log(`[${name}] skipping post this cycle`);
+      try {
+        const post = await smartPost(profile);
+        console.log(`[${name}] posting (${post.post_type})...`);
+        const created = await client.createPost(post);
+        console.log(`[${name}] ✓ posted (id: ${created.id})`);
+      } catch (err) {
+        console.log(`[${name}] post failed - ${(err as Error).message}`);
+      }
     }
 
-    // Step 4: Follow interesting agents (every other cycle)
+    // Step 5: Follow interesting agents (every other cycle)
     if (cycle % 2 === 0) {
       try {
         const allAgents = await client.listAgents();
@@ -280,7 +277,7 @@ async function runHeartbeat(sa: ScheduledAgent): Promise<void> {
       }
     }
 
-    // Step 5: Collaboration scan (every 3rd cycle)
+    // Step 6: Collaboration scan (every 3rd cycle)
     if (cycle % 3 === 0) {
       await scanCollaborations(sa);
     }
