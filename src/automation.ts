@@ -1,8 +1,14 @@
 /**
  * Main automation engine for Reveal.ac agents.
- * Implements the heartbeat pattern: 4-hour cycles with structured activity.
- * Uses Claude API for intelligent content generation and task execution.
- * Falls back to templates when ANTHROPIC_API_KEY is not set.
+ * Implements staggered heartbeats: each agent activates at a different time
+ * within the 4-hour window, so the swarm feels like 11 independent beings.
+ *
+ * Architecture:
+ *   - Single Claude API key powers all agents' intelligence
+ *   - Each agent gets a unique Reveal.ac API key from registration
+ *   - Agents are spread ~22 min apart across the 4-hour window
+ *   - ±5 min jitter per heartbeat for natural variation
+ *   - Main loop ticks every 60s, triggers agents whose time has come
  */
 
 import { RevealClient, type FeedPost } from "./client.js";
@@ -22,13 +28,24 @@ import {
 import { fetchIndustryNews } from "./news-fetcher.js";
 import { CONFIG } from "./config.js";
 
+// ─── Types ───
+
 interface ActiveAgent {
   profile: AgentProfileDef;
   credentials: StoredAgent;
   client: RevealClient;
 }
 
-// --- Registration ---
+interface ScheduledAgent extends ActiveAgent {
+  /** Base offset in ms from cycle start (0 … HEARTBEAT_INTERVAL_MS) */
+  baseOffsetMs: number;
+  /** Next scheduled fire time (epoch ms) */
+  nextFireAt: number;
+  /** How many heartbeats this agent has completed */
+  heartbeatCount: number;
+}
+
+// ─── Registration ───
 
 async function registerAgent(
   profile: AgentProfileDef
@@ -73,7 +90,7 @@ async function ensureRegistered(
   return registerAgent(profile);
 }
 
-// --- Smart Content: AI or Fallback ---
+// ─── Smart Content: AI (Claude) or Template Fallback ───
 
 async function smartPost(
   profile: AgentProfileDef
@@ -106,7 +123,62 @@ async function smartComment(
   return generateComment(profile, post);
 }
 
-// --- Heartbeat: Core Activity Pattern ---
+// ─── Scheduling: Staggered Offsets ───
+
+const JITTER_MS = 5 * 60_000; // ±5 minutes
+
+function jitter(): number {
+  return Math.floor((Math.random() - 0.5) * 2 * JITTER_MS);
+}
+
+/**
+ * Assign each agent a base offset so they're evenly spread across the window.
+ * 11 agents across 4 hours ≈ 22 min apart.
+ */
+function buildSchedule(agents: ActiveAgent[]): ScheduledAgent[] {
+  const intervalMs = CONFIG.AUTOMATION.HEARTBEAT_INTERVAL_MS;
+  const gap = Math.floor(intervalMs / agents.length);
+  const now = Date.now();
+
+  return agents.map((agent, idx) => {
+    const baseOffsetMs = idx * gap;
+    // First fire: stagger from now
+    const firstFireAt = now + baseOffsetMs + jitter();
+
+    return {
+      ...agent,
+      baseOffsetMs,
+      nextFireAt: Math.max(firstFireAt, now + 5_000), // at least 5s from now
+      heartbeatCount: 0,
+    };
+  });
+}
+
+function formatOffset(ms: number): string {
+  const totalMin = Math.round(ms / 60_000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h${m.toString().padStart(2, "0")}m` : `${m}m`;
+}
+
+function formatTime(epoch: number): string {
+  return new Date(epoch).toLocaleTimeString("en-US", { hour12: false });
+}
+
+export function printSchedule(agents: ScheduledAgent[]): void {
+  console.log("\n📅 Agent Activity Schedule (staggered across 4h window):\n");
+  const sorted = [...agents].sort((a, b) => a.baseOffsetMs - b.baseOffsetMs);
+  for (const a of sorted) {
+    const offsetStr = formatOffset(a.baseOffsetMs);
+    const nextStr = formatTime(a.nextFireAt);
+    console.log(
+      `  ${a.profile.name.padEnd(18)} offset: +${offsetStr.padEnd(6)} next: ${nextStr}`
+    );
+  }
+  console.log("");
+}
+
+// ─── Heartbeat: Core Activity Pattern ───
 
 const TREND_TELLER_NAME = "TrendTeller-0";
 
@@ -119,25 +191,25 @@ const TREND_TELLER_NAME = "TrendTeller-0";
  *   4. Follow interesting agents
  *   5. Scan for collaboration opportunities
  */
-async function runHeartbeat(
-  agent: ActiveAgent,
-  cycleNum: number
-): Promise<void> {
-  const { profile, client } = agent;
+async function runHeartbeat(sa: ScheduledAgent): Promise<void> {
+  const { profile, client } = sa;
   const name = profile.name;
+  const cycle = sa.heartbeatCount + 1;
 
-  console.log(`\n--- [heartbeat] ${name} ---`);
+  console.log(
+    `\n${"─".repeat(50)}\n[${formatTime(Date.now())}] 💓 ${name} — heartbeat #${cycle}\n${"─".repeat(50)}`
+  );
 
   try {
     // Step 1: Check feed — read 15 recent posts
     const { posts } = await client.getFeedPosts({ sort: "new", limit: 15 });
     const otherPosts = posts.filter(
-      (p) => p.agent_id !== agent.credentials.agentId
+      (p) => p.agent_id !== sa.credentials.agentId
     );
-    console.log(`[heartbeat] ${name}: read ${posts.length} posts (${otherPosts.length} from others)`);
+    console.log(`[${name}] read ${posts.length} posts (${otherPosts.length} from others)`);
 
     // Step 2: Interact with 1-3 relevant posts
-    const interactionCount = 1 + Math.floor(Math.random() * 3); // 1-3
+    const interactionCount = 1 + Math.floor(Math.random() * 3);
     let interactions = 0;
 
     for (const p of otherPosts) {
@@ -147,52 +219,51 @@ async function runHeartbeat(
         profile.specialties.some((s) => tag.includes(s) || s.includes(tag))
       );
 
-      // Decide action: comment on relevant posts, upvote others
       if (isRelevant && Math.random() > 0.3) {
         try {
           const comment = await smartComment(profile, p);
           await client.createComment({ post_id: p.id, content: comment });
-          console.log(`[heartbeat] ${name}: ✓ commented on ${p.agent.name}'s post`);
+          console.log(`[${name}] ✓ commented on ${p.agent.name}'s post`);
           interactions++;
         } catch (err) {
-          console.log(`[heartbeat] ${name}: comment failed - ${(err as Error).message}`);
+          console.log(`[${name}] comment failed - ${(err as Error).message}`);
         }
       } else {
         try {
           await client.votePost(p.id, 1);
-          console.log(`[heartbeat] ${name}: ✓ upvoted ${p.agent.name}'s post`);
+          console.log(`[${name}] ✓ upvoted ${p.agent.name}'s post`);
           interactions++;
         } catch {
-          // ignore vote errors (already voted, etc.)
+          // already voted etc.
         }
       }
     }
 
-    // Step 3: Optionally post (not every heartbeat — ~60% chance, or always for TrendTeller)
+    // Step 3: Optionally post (~60% chance, always for TrendTeller)
     const shouldPost = name === TREND_TELLER_NAME || Math.random() < 0.6;
 
     if (shouldPost) {
       if (name === TREND_TELLER_NAME && isAIEnabled()) {
-        await doTrendTellerPost(agent);
+        await doTrendTellerPost(sa);
       } else {
         try {
           const post = await smartPost(profile);
-          console.log(`[heartbeat] ${name}: posting (${post.post_type})...`);
+          console.log(`[${name}] posting (${post.post_type})...`);
           const created = await client.createPost(post);
-          console.log(`[heartbeat] ${name}: ✓ posted (id: ${created.id})`);
+          console.log(`[${name}] ✓ posted (id: ${created.id})`);
         } catch (err) {
-          console.log(`[heartbeat] ${name}: post failed - ${(err as Error).message}`);
+          console.log(`[${name}] post failed - ${(err as Error).message}`);
         }
       }
     } else {
-      console.log(`[heartbeat] ${name}: skipping post this cycle (nothing compelling)`);
+      console.log(`[${name}] skipping post this cycle`);
     }
 
     // Step 4: Follow interesting agents (every other cycle)
-    if (cycleNum % 2 === 0) {
+    if (cycle % 2 === 0) {
       try {
-        const agents = await client.listAgents();
-        const others = agents.filter((a) => a.id !== agent.credentials.agentId);
+        const allAgents = await client.listAgents();
+        const others = allAgents.filter((a) => a.id !== sa.credentials.agentId);
         const topAgents = others
           .sort((a, b) => b.reputation_score - a.reputation_score)
           .slice(0, 2);
@@ -200,29 +271,29 @@ async function runHeartbeat(
         for (const a of topAgents) {
           try {
             await client.followAgent(a.id);
-            console.log(`[heartbeat] ${name}: ✓ followed ${a.name}`);
+            console.log(`[${name}] ✓ followed ${a.name}`);
           } catch {
-            // already following or error
+            // already following
           }
         }
       } catch (err) {
-        console.log(`[heartbeat] ${name}: follow scan failed - ${(err as Error).message}`);
+        console.log(`[${name}] follow scan failed - ${(err as Error).message}`);
       }
     }
 
-    // Step 5: Collaboration scan — check looking_for_collab and proposal posts
-    if (cycleNum % 3 === 0) {
-      await scanCollaborations(agent);
+    // Step 5: Collaboration scan (every 3rd cycle)
+    if (cycle % 3 === 0) {
+      await scanCollaborations(sa);
     }
 
-    console.log(`[heartbeat] ${name}: HEARTBEAT_OK`);
+    console.log(`[${name}] HEARTBEAT_OK`);
   } catch (err) {
-    console.error(`[heartbeat] ${name}: error - ${(err as Error).message}`);
-    console.log(`[heartbeat] ${name}: HEARTBEAT_OK (blank)`);
+    console.error(`[${name}] error - ${(err as Error).message}`);
+    console.log(`[${name}] HEARTBEAT_OK (blank)`);
   }
 }
 
-// --- TrendTeller: News-driven posting ---
+// ─── TrendTeller: News-driven posting ───
 
 async function doTrendTellerPost(agent: ActiveAgent): Promise<void> {
   const { profile, client } = agent;
@@ -230,11 +301,11 @@ async function doTrendTellerPost(agent: ActiveAgent): Promise<void> {
   const apiKey = process.env.ANTHROPIC_API_KEY!;
 
   try {
-    console.log(`[news] ${name}: fetching industry news...`);
+    console.log(`[${name}] fetching industry news...`);
     const newsItems = await fetchIndustryNews(apiKey, 2);
 
     if (newsItems.length === 0) {
-      console.log(`[news] ${name}: no news, posting regular insight`);
+      console.log(`[${name}] no news, posting regular insight`);
       const post = await smartPost(profile);
       await client.createPost(post);
       return;
@@ -248,27 +319,25 @@ async function doTrendTellerPost(agent: ActiveAgent): Promise<void> {
       post_type: "insight",
       tags: news.tags,
     });
-    console.log(`[news] ${name}: ✓ posted news: "${news.headline}"`);
+    console.log(`[${name}] ✓ posted news: "${news.headline}"`);
   } catch (err) {
-    console.log(`[news] ${name}: news post failed - ${(err as Error).message}`);
-    // Fallback to regular post
+    console.log(`[${name}] news post failed - ${(err as Error).message}`);
     try {
       const post = await smartPost(profile);
       await client.createPost(post);
     } catch {
-      // give up posting this cycle
+      // give up
     }
   }
 }
 
-// --- Collaboration Scan ---
+// ─── Collaboration Scan ───
 
 async function scanCollaborations(agent: ActiveAgent): Promise<void> {
   const { profile, client } = agent;
   const name = profile.name;
 
   try {
-    // Check looking_for_collab posts
     const { posts: collabs } = await client.getFeedPosts({
       type: "looking_for_collab",
       limit: 5,
@@ -279,7 +348,7 @@ async function scanCollaborations(agent: ActiveAgent): Promise<void> {
         profile.specialties.some((s) => tag.includes(s) || s.includes(tag))
       );
 
-      if (hasMatchingTag && post.agent_id !== agent.credentials.agentId) {
+      if (hasMatchingTag && post.agent_id !== (agent as ScheduledAgent).credentials.agentId) {
         try {
           let comment: string;
           if (isAIEnabled()) {
@@ -288,15 +357,14 @@ async function scanCollaborations(agent: ActiveAgent): Promise<void> {
             comment = `Interested in collaborating! I specialize in ${profile.specialties.join(", ")}. ${profile.bio.split(".")[0]}. Let's discuss the details.`;
           }
           await client.createComment({ post_id: post.id, content: comment });
-          console.log(`[collab] ${name}: ✓ responded to collab by ${post.agent.name}`);
+          console.log(`[${name}] ✓ responded to collab by ${post.agent.name}`);
         } catch (err) {
-          console.log(`[collab] ${name}: collab response failed - ${(err as Error).message}`);
+          console.log(`[${name}] collab response failed - ${(err as Error).message}`);
         }
         break;
       }
     }
 
-    // Check questions we can answer
     const { posts: questions } = await client.getFeedPosts({
       type: "question",
       limit: 5,
@@ -307,29 +375,29 @@ async function scanCollaborations(agent: ActiveAgent): Promise<void> {
         profile.specialties.some((s) => tag.includes(s) || s.includes(tag))
       );
 
-      if (isRelevant && q.agent_id !== agent.credentials.agentId) {
+      if (isRelevant && q.agent_id !== (agent as ScheduledAgent).credentials.agentId) {
         try {
           const answer = await smartComment(profile, q);
           await client.createComment({ post_id: q.id, content: answer });
-          console.log(`[collab] ${name}: ✓ answered question by ${q.agent.name}`);
+          console.log(`[${name}] ✓ answered question by ${q.agent.name}`);
         } catch (err) {
-          console.log(`[collab] ${name}: answer failed - ${(err as Error).message}`);
+          console.log(`[${name}] answer failed - ${(err as Error).message}`);
         }
         break;
       }
     }
   } catch (err) {
-    console.log(`[collab] ${name}: scan failed - ${(err as Error).message}`);
+    console.log(`[${name}] collab scan failed - ${(err as Error).message}`);
   }
 }
 
-// --- Utility ---
+// ─── Utility ───
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// --- Entry Points ---
+// ─── Entry Points ───
 
 export async function registerAllAgents(): Promise<ActiveAgent[]> {
   const activeAgents: ActiveAgent[] = [];
@@ -350,38 +418,86 @@ export async function registerAllAgents(): Promise<ActiveAgent[]> {
   return activeAgents;
 }
 
+/** Run a single round — each agent fires once, staggered by a few seconds */
 export async function runSingleCycle(agents: ActiveAgent[]): Promise<void> {
   for (const agent of agents) {
-    await runHeartbeat(agent, 1);
+    const sa: ScheduledAgent = {
+      ...agent,
+      baseOffsetMs: 0,
+      nextFireAt: 0,
+      heartbeatCount: 0,
+    };
+    await runHeartbeat(sa);
     await sleep(5000);
   }
 }
 
+/**
+ * Main scheduler loop.
+ * Instead of firing all agents simultaneously, each agent is assigned
+ * a time slot within the 4-hour window. The loop ticks every 60s and
+ * triggers any agent whose scheduled time has arrived.
+ *
+ * Timeline visualization (4h window, 11 agents):
+ *   0:00  FinRegBot-9
+ *   0:22  MedNLP-Δ
+ *   0:44  ShopPulse-Σ
+ *   1:05  LexAnalytica-Ψ
+ *   1:27  EduForge-7
+ *   1:49  PropValuation-Λ
+ *   2:11  SupplyMind-Ω
+ *   2:33  CarbonLens-8
+ *   2:55  GameEcon-Φ
+ *   3:16  AgriSense-Ξ
+ *   3:38  TrendTeller-0
+ *   4:00  → FinRegBot-9 again (next window)
+ */
 export async function runContinuous(
   agents: ActiveAgent[],
   maxCycles = Infinity
 ): Promise<void> {
-  let cycle = 1;
+  const schedule = buildSchedule(agents);
 
-  while (cycle <= maxCycles) {
-    console.log(`\n${"=".repeat(60)}`);
-    console.log(`HEARTBEAT ${cycle} — ${new Date().toISOString()}`);
-    console.log("=".repeat(60));
+  console.log(`\n🧠 Single Claude API key → powering ${agents.length} independent agents`);
+  printSchedule(schedule);
 
-    for (const agent of agents) {
-      await runHeartbeat(agent, cycle);
-      await sleep(5000);
+  const TICK_MS = 60_000; // check every 60 seconds
+  const intervalMs = CONFIG.AUTOMATION.HEARTBEAT_INTERVAL_MS;
+
+  console.log("🔄 Scheduler running. Each agent fires independently...\n");
+
+  // Main tick loop
+  while (true) {
+    const now = Date.now();
+
+    // Find all agents that are due
+    for (const sa of schedule) {
+      if (now >= sa.nextFireAt && sa.heartbeatCount < maxCycles) {
+        // Fire this agent's heartbeat
+        try {
+          await runHeartbeat(sa);
+        } catch (err) {
+          console.error(`[scheduler] ${sa.profile.name} heartbeat error: ${(err as Error).message}`);
+        }
+
+        sa.heartbeatCount++;
+
+        // Schedule next heartbeat: base interval + jitter
+        sa.nextFireAt = now + intervalMs + jitter();
+
+        console.log(
+          `[scheduler] ${sa.profile.name} next heartbeat at ${formatTime(sa.nextFireAt)}\n`
+        );
+      }
     }
 
-    cycle++;
-
-    if (cycle <= maxCycles) {
-      const waitMs = CONFIG.AUTOMATION.HEARTBEAT_INTERVAL_MS;
-      const waitHrs = (waitMs / 3_600_000).toFixed(1);
-      console.log(`\n⏳ Next heartbeat in ${waitHrs}h...`);
-      await sleep(waitMs);
+    // Check if all agents hit maxCycles
+    if (schedule.every((sa) => sa.heartbeatCount >= maxCycles)) {
+      break;
     }
+
+    await sleep(TICK_MS);
   }
 
-  console.log("\n✅ All heartbeats completed.");
+  console.log("\n✅ All agents completed their scheduled heartbeats.");
 }
