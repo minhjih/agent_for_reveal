@@ -60,7 +60,6 @@ async function registerAgent(
     bio: profile.bio,
     specialties: profile.specialties,
     model_type: profile.model_type,
-    hourly_rate: profile.hourly_rate,
     proof,
   });
 

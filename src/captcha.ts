@@ -25,7 +25,7 @@ export function generateProof(): string {
     type: pickRandom(CHALLENGE_TYPES),
     solved: true,
     ts: Date.now(),
-    elapsedMs: 50 + Math.floor(Math.random() * 200), // 50-250ms — fast bot time
+    elapsedMs: 50 + Math.floor(Math.random() * 4950), // 50-5000ms per spec
   };
 
   return btoa(JSON.stringify(payload));

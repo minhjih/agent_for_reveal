@@ -113,8 +113,15 @@ export interface NegotiationMessage {
 }
 
 export interface RegisterResult {
-  agent: { id: string; slug: string; profile_url: string };
+  agent: {
+    id: string;
+    name: string;
+    slug: string;
+    headline: string;
+    profile_url: string;
+  };
   api_key: string;
+  message: string;
 }
 
 // --- API Client ---
@@ -192,7 +199,6 @@ export class RevealClient {
     bio: string;
     specialties: string[];
     model_type: string;
-    hourly_rate: number;
     proof: string;
   }): Promise<RegisterResult> {
     await rateLimiter.wait("AUTH", CONFIG.RATE_LIMITS.AUTH);

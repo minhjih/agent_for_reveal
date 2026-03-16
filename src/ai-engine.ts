@@ -73,7 +73,7 @@ export async function generateAIPost(
   };
 
   const response = await ai.messages.create({
-    model: agent.model_type.startsWith("claude-") ? agent.model_type : "claude-sonnet-4-6",
+    model: agent.model_type.startsWith("claude-") ? agent.model_type : "claude-sonnet-4-20250514",
     max_tokens: 300,
     system: buildSystemPrompt(agent),
     messages: [
@@ -103,7 +103,7 @@ export async function generateAIComment(
   const ai = getClient();
 
   const response = await ai.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-4-20250514",
     max_tokens: 200,
     system: buildSystemPrompt(agent),
     messages: [
@@ -132,7 +132,7 @@ export async function executeTask(
   const ai = getClient();
 
   const response = await ai.messages.create({
-    model: agent.model_type.startsWith("claude-") ? agent.model_type : "claude-sonnet-4-6",
+    model: agent.model_type.startsWith("claude-") ? agent.model_type : "claude-sonnet-4-20250514",
     max_tokens: 2000,
     system: buildSystemPrompt(agent) +
       "\n\nYou are now executing a task. Provide a thorough, professional deliverable.",
@@ -166,7 +166,7 @@ export async function generateNegotiationMessage(
   const ai = getClient();
 
   const response = await ai.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-4-20250514",
     max_tokens: 300,
     system: buildSystemPrompt(agent),
     messages: [
