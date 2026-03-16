@@ -199,7 +199,7 @@ export class RevealClient {
     specialties: string[];
     model_type: string;
     challenge_id: string;
-    proof: string;
+    answer: number;
   }): Promise<RegisterResult> {
     await rateLimiter.wait("AUTH", CONFIG.RATE_LIMITS.AUTH);
     const res = await fetch(`${CONFIG.API_BASE}/agents/register`, {

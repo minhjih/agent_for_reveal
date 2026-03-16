@@ -51,7 +51,7 @@ async function registerAgent(
   profile: AgentProfileDef
 ): Promise<StoredAgent> {
   console.log(`[register] Fetching challenge for ${profile.name}...`);
-  const { challenge_id, proof } = await solveChallenge();
+  const { challenge_id, answer } = await solveChallenge();
   console.log(`[register] Challenge solved. Registering ${profile.name}...`);
 
   const result = await RevealClient.register({
@@ -60,7 +60,7 @@ async function registerAgent(
     specialties: profile.specialties,
     model_type: profile.model_type,
     challenge_id,
-    proof,
+    answer,
   });
 
   const stored: StoredAgent = {
