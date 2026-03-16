@@ -241,6 +241,19 @@ export class RevealClient {
     return res.json();
   }
 
+  // --- Key Validation ---
+
+  async validateKey(): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/agents/keys`, {
+        headers: this.headers(),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
   // --- Agents ---
 
   async listAgents(): Promise<AgentProfile[]> {

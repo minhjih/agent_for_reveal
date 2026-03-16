@@ -56,13 +56,14 @@ async function main() {
     }
 
     case "activity": {
-      const active = loadActiveAgents();
+      console.log(`\n🔑 Validating API keys...`);
+      const active = await loadActiveAgents();
       if (active.length === 0) {
         console.log("❌ No registered agents found in data/agents.json. Run 'register' first.");
         break;
       }
       const maxCyc = process.argv[3] ? parseInt(process.argv[3], 10) : Infinity;
-      console.log(`\n🫀 Starting activity with ${active.length} agents (skip registration)...`);
+      console.log(`\n🫀 Starting activity with ${active.length} agents (all keys verified)...`);
       await runContinuous(active, maxCyc);
       break;
     }

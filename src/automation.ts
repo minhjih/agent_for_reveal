@@ -445,13 +445,31 @@ function sleep(ms: number): Promise<void> {
 
 // ─── Entry Points ───
 
-export function loadActiveAgents(): ActiveAgent[] {
+export async function loadActiveAgents(): Promise<ActiveAgent[]> {
   const activeAgents: ActiveAgent[] = [];
   for (const profile of AGENT_PROFILES) {
     const credentials = getAgentCredentials(profile.name);
-    if (credentials) {
-      const client = new RevealClient(credentials.apiKey);
-      activeAgents.push({ profile, credentials, client });
+    if (!credentials) continue;
+
+    const client = new RevealClient(credentials.apiKey);
+    const agent: ActiveAgent = { profile, credentials, client };
+
+    // Validate key before starting
+    console.log(`[init] Validating key for ${profile.name}...`);
+    const valid = await client.validateKey();
+
+    if (valid) {
+      console.log(`[init] ✓ ${profile.name} key OK`);
+      activeAgents.push(agent);
+    } else {
+      console.log(`[init] ⚠️ ${profile.name} key invalid, recovering...`);
+      const sa: ScheduledAgent = { ...agent, baseOffsetMs: 0, nextFireAt: 0, heartbeatCount: 0 };
+      const recovered = await recoverApiKey(sa);
+      if (recovered) {
+        activeAgents.push({ profile: sa.profile, credentials: sa.credentials, client: sa.client });
+      } else {
+        console.log(`[init] ❌ ${profile.name} key recovery failed, skipping`);
+      }
     }
   }
   return activeAgents;
