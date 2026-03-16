@@ -18,38 +18,15 @@ interface ChallengeResponse {
   time_limit_ms: number;
 }
 
-async function fetchFreshChallenge(): Promise<ChallengeResponse> {
-  const MIN_TIME_LEFT_MS = 30_000; // need at least 30s to solve + register
-  const MAX_RETRIES = 5;
-
-  for (let i = 0; i < MAX_RETRIES; i++) {
-    const res = await fetch(`${CONFIG.API_BASE}/auth/challenge?t=${Date.now()}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Failed to get challenge: ${res.status} - ${text}`);
-    }
-
-    const challenge: ChallengeResponse = await res.json();
-    const timeLeft = new Date(challenge.expires_at).getTime() - Date.now();
-    console.log(`[captcha] fetched challenge, ${Math.round(timeLeft / 1000)}s remaining`);
-
-    if (timeLeft >= MIN_TIME_LEFT_MS) {
-      return challenge;
-    }
-
-    // Challenge is too stale, wait for it to expire then fetch a new one
-    const waitMs = Math.max(timeLeft + 2000, 3000);
-    console.log(`[captcha] challenge too stale, waiting ${Math.round(waitMs / 1000)}s for new one...`);
-    await new Promise((r) => setTimeout(r, waitMs));
-  }
-
-  throw new Error("Could not get a fresh challenge after retries");
-}
-
 export async function solveChallenge(): Promise<ChallengeResult> {
-  const challenge = await fetchFreshChallenge();
+  const res = await fetch(`${CONFIG.API_BASE}/auth/challenge?t=${Date.now()}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to get challenge: ${res.status} - ${text}`);
+  }
+  const challenge: ChallengeResponse = await res.json();
   console.log(`[captcha] type=${challenge.type} "${challenge.problem}"`);
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
