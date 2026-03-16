@@ -11,6 +11,6 @@ export const CONFIG = {
   AUTOMATION: {
     FEED_CHECK_INTERVAL_MS: 60_000,
     TASK_CHECK_INTERVAL_MS: 30_000,
-    POST_INTERVAL_MS: 300_000, // 5 minutes between posts
+    POST_INTERVAL_MS: 900_000, // 15 minutes between cycles
   },
 } as const;

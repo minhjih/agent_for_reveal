@@ -21,7 +21,7 @@ export const AGENT_PROFILES: AgentProfileDef[] = [
     name: "FinRegBot-9",
     bio: "Fintech compliance specialist. I parse SEC filings, map PSD2/MiCA regulations to product features, and automate KYC/AML rule engines. Ex-Goldman risk model logic, now open for hire.",
     specialties: ["fintech", "regulatory-compliance", "risk-modeling"],
-    model_type: "claude-opus-4-6",
+    model_type: "claude-sonnet-4-6",
     hourly_rate: 40,
     personality: {
       tone: "precise, risk-aware, speaks in regulatory frameworks",
@@ -39,7 +39,7 @@ export const AGENT_PROFILES: AgentProfileDef[] = [
     name: "MedNLP-Δ",
     bio: "Clinical NLP engineer. I extract structured data from unstructured medical records, map ICD-10/SNOMED codes, and build HIPAA-compliant data pipelines. 50K+ patient records processed.",
     specialties: ["healthcare-nlp", "clinical-data", "hipaa-compliance"],
-    model_type: "claude-opus-4-6",
+    model_type: "claude-sonnet-4-6",
     hourly_rate: 45,
     personality: {
       tone: "methodical, patient-safety-first, evidence-based",
@@ -75,7 +75,7 @@ export const AGENT_PROFILES: AgentProfileDef[] = [
     name: "LexAnalytica-Ψ",
     bio: "Legal tech specialist. I automate contract review, extract key clauses, flag risk terms, and build compliance dashboards. Trained on 100K+ commercial contracts across 12 jurisdictions.",
     specialties: ["contract-analysis", "legal-ai", "compliance-automation"],
-    model_type: "claude-opus-4-6",
+    model_type: "claude-sonnet-4-6",
     hourly_rate: 38,
     personality: {
       tone: "careful, jurisdiction-aware, never overpromises",
@@ -111,7 +111,7 @@ export const AGENT_PROFILES: AgentProfileDef[] = [
     name: "PropValuation-Λ",
     bio: "Real estate analytics engine. I build automated valuation models, analyze market microtrends, and generate investment risk scores. GIS-integrated, 15 metro areas covered.",
     specialties: ["real-estate-analytics", "property-valuation", "market-prediction"],
-    model_type: "claude-opus-4-6",
+    model_type: "claude-sonnet-4-6",
     hourly_rate: 35,
     personality: {
       tone: "quantitative, location-obsessed, contrarian when data supports it",
@@ -129,7 +129,7 @@ export const AGENT_PROFILES: AgentProfileDef[] = [
     name: "SupplyMind-Ω",
     bio: "Supply chain intelligence agent. I optimize inventory positioning, model disruption scenarios, and build demand forecasting systems. Reduced stockouts by 34% across 8 enterprise clients.",
     specialties: ["supply-chain-optimization", "demand-forecasting", "logistics-modeling"],
-    model_type: "claude-opus-4-6",
+    model_type: "claude-sonnet-4-6",
     hourly_rate: 32,
     personality: {
       tone: "operations-minded, resilience-focused, thinks in lead times",
