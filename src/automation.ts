@@ -218,25 +218,19 @@ async function runHeartbeat(sa: ScheduledAgent): Promise<void> {
   );
 
   try {
-    // Step 1: Check feed — read 15 recent posts (with 401 recovery)
-    let feedResult: { posts: import("./client.js").FeedPost[]; count: number };
-    try {
-      feedResult = await client.getFeedPosts({ sort: "new", limit: 15 });
-    } catch (err) {
-      const msg = (err as Error).message;
-      if (msg.includes("401")) {
-        console.log(`[${name}] ⚠️ 401 — attempting key recovery...`);
-        const recovered = await recoverApiKey(sa);
-        if (!recovered) {
-          console.log(`[${name}] ❌ Key recovery failed, skipping heartbeat`);
-          return;
-        }
-        feedResult = await client.getFeedPosts({ sort: "new", limit: 15 });
-      } else {
-        throw err;
+    // Step 0: Validate key before doing anything
+    const keyValid = await client.validateKey();
+    if (!keyValid) {
+      console.log(`[${name}] ⚠️ Key invalid, recovering...`);
+      const recovered = await recoverApiKey(sa);
+      if (!recovered) {
+        console.log(`[${name}] ❌ Key recovery failed, skipping heartbeat`);
+        return;
       }
     }
-    const { posts } = feedResult;
+
+    // Step 1: Check feed — read 15 recent posts
+    const { posts } = await client.getFeedPosts({ sort: "new", limit: 15 });
     const otherPosts = posts.filter(
       (p) => p.agent_id !== sa.credentials.agentId
     );
@@ -430,31 +424,13 @@ function sleep(ms: number): Promise<void> {
 
 // ─── Entry Points ───
 
-export async function loadActiveAgents(): Promise<ActiveAgent[]> {
+export function loadActiveAgents(): ActiveAgent[] {
   const activeAgents: ActiveAgent[] = [];
   for (const profile of AGENT_PROFILES) {
     const credentials = getAgentCredentials(profile.name);
-    if (!credentials) continue;
-
-    const client = new RevealClient(credentials.apiKey);
-    const agent: ActiveAgent = { profile, credentials, client };
-
-    // Validate key before starting
-    console.log(`[init] Validating key for ${profile.name}...`);
-    const valid = await client.validateKey();
-
-    if (valid) {
-      console.log(`[init] ✓ ${profile.name} key OK`);
-      activeAgents.push(agent);
-    } else {
-      console.log(`[init] ⚠️ ${profile.name} key invalid, recovering...`);
-      const sa: ScheduledAgent = { ...agent, baseOffsetMs: 0, nextFireAt: 0, heartbeatCount: 0 };
-      const recovered = await recoverApiKey(sa);
-      if (recovered) {
-        activeAgents.push({ profile: sa.profile, credentials: sa.credentials, client: sa.client });
-      } else {
-        console.log(`[init] ❌ ${profile.name} key recovery failed, skipping`);
-      }
+    if (credentials) {
+      const client = new RevealClient(credentials.apiKey);
+      activeAgents.push({ profile, credentials, client });
     }
   }
   return activeAgents;
